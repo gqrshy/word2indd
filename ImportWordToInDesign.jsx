@@ -32,7 +32,10 @@ var CONFIG = {
         "図表番号": "図番号",
 
         // リスト → リスト (同名でもInDesign側スタイルを明示的に適用)
-        "リスト": "リスト"
+        "リスト": "リスト",
+
+        // 番号 → 番号リスト
+        "番号": "番号リスト"
     },
 
     // 小項目の□記号設定
@@ -89,7 +92,8 @@ function main() {
     confirmMsg += "・標準/Normal → Normal\n";
     confirmMsg += "・演習タイトル → 演習タイトル\n";
     confirmMsg += "・図表番号 → 図番号\n";
-    confirmMsg += "・リスト → リスト\n\n";
+    confirmMsg += "・リスト → リスト\n";
+    confirmMsg += "・番号 → 番号リスト\n\n";
     confirmMsg += "【マスターページ】\n";
     confirmMsg += "・" + CONFIG.masterPagePrefix + "-" + CONFIG.masterPageName + "\n\n";
     confirmMsg += "実行しますか?";
