@@ -60,6 +60,85 @@ function debugLog(message) {
     }
 }
 
+// 埋め込みオブジェクトの問題を検出
+function detectEmbeddedObjectIssues(story) {
+    if (!story || !story.isValid) return;
+
+    var issueCount = 0;
+    var paragraphs = story.paragraphs;
+
+    for (var i = 0; i < paragraphs.length; i++) {
+        try {
+            var para = paragraphs[i];
+            var text = para.contents;
+
+            // □のみの段落を検出（埋め込みオブジェクトが変換できなかった可能性）
+            // 改行コードを除去して比較
+            var cleanText = text.replace(/[\r\n]/g, "");
+
+            if (cleanText === "□" || cleanText === "\uFFFD" || cleanText === "\u25A1") {
+                issueCount++;
+                debugLog("警告: 段落 " + (i + 1) + " に孤立した□文字を検出（埋め込みオブジェクトの可能性）");
+
+                // 前後の段落内容をログ出力（デバッグ用）
+                if (i > 0) {
+                    var prevText = paragraphs[i - 1].contents.substring(0, 50);
+                    debugLog("  前の段落: " + prevText + "...");
+                }
+                if (i < paragraphs.length - 1) {
+                    var nextText = paragraphs[i + 1].contents.substring(0, 50);
+                    debugLog("  次の段落: " + nextText + "...");
+                }
+            }
+        } catch (e) {
+            // エラーは無視
+        }
+    }
+
+    if (issueCount > 0) {
+        debugLog("合計 " + issueCount + " 件の埋め込みオブジェクト問題を検出");
+        debugLog("ヒント: Word文書内の表がExcel埋め込みオブジェクトの場合、");
+        debugLog("       Wordで表を選択し、「表に変換」してから再インポートしてください。");
+    }
+
+    return issueCount;
+}
+
+// Wordインポート設定を構成
+function configureWordImportPreferences() {
+    try {
+        var prefs = app.wordRTFImportPreferences;
+
+        // テーブルをそのまま（フォーマット付き）でインポート
+        prefs.removeFormatting = false;
+
+        // グラフィック/埋め込みオブジェクトを保持
+        prefs.preserveGraphics = true;
+
+        // ローカルオーバーライドを保持
+        prefs.preserveLocalOverrides = true;
+
+        // 脚注・索引等をインポート
+        prefs.importFootnotes = true;
+        prefs.importEndnotes = true;
+        prefs.importIndex = true;
+        prefs.importTOC = true;
+
+        // 未使用スタイルもインポート
+        prefs.importUnusedStyles = false;
+
+        // タイポグラフィ引用符を使用
+        prefs.useTypographersQuotes = true;
+
+        debugLog("Wordインポート設定を構成完了");
+        debugLog("  - preserveGraphics: " + prefs.preserveGraphics);
+        debugLog("  - removeFormatting: " + prefs.removeFormatting);
+        debugLog("  - preserveLocalOverrides: " + prefs.preserveLocalOverrides);
+    } catch (e) {
+        debugLog("Wordインポート設定エラー: " + e.message);
+    }
+}
+
 // メイン処理
 function main() {
     if (app.documents.length === 0) {
@@ -145,6 +224,15 @@ function main() {
         resultMsg += "表フォント更新: " + (result.tableFontsUpdated || 0) + "文字\n";
         resultMsg += "処理時間: " + duration.toFixed(1) + "秒";
 
+        // 埋め込みオブジェクトの問題がある場合は警告を追加
+        if (result.embeddedObjectIssues && result.embeddedObjectIssues > 0) {
+            resultMsg += "\n\n⚠ 警告: " + result.embeddedObjectIssues + "件の埋め込みオブジェクト問題を検出\n";
+            resultMsg += "（□のみの段落がある場合、Wordの埋め込み表が\n";
+            resultMsg += "変換できなかった可能性があります。\n";
+            resultMsg += "Wordで表を選択→右クリック→「表に変換」後、\n";
+            resultMsg += "再度インポートしてください）";
+        }
+
         alert(resultMsg);
 
     } catch (e) {
@@ -197,12 +285,23 @@ function importWordDocument(doc, wordFile, master) {
 
     // Word文書を配置
     try {
+        // Wordインポート設定を構成
+        configureWordImportPreferences();
+
         textFrame.place(wordFile);
         debugLog("Word文書を配置完了");
 
         // インポートしたストーリーを記録
         result.importedStory = textFrame.parentStory;
         debugLog("インポートしたストーリーID: " + result.importedStory.id);
+
+        // インポートされた表の数を確認
+        var tableCount = result.importedStory.tables.length;
+        debugLog("インポートされた表の数: " + tableCount);
+
+        // 埋め込みオブジェクトの問題を検出（□文字の孤立をチェック）
+        result.embeddedObjectIssues = detectEmbeddedObjectIssues(result.importedStory);
+
     } catch (e) {
         throw new Error("Word文書の読み込み失敗: " + e.message);
     }
