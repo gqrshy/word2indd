@@ -348,7 +348,9 @@ function main() {
     confirmMsg += "・図表番号 → 図番号\n";
     confirmMsg += "・リスト → リスト\n";
     confirmMsg += "・番号 → 番号リスト\n\n";
-    confirmMsg += "【表のフォント更新】\n";
+    confirmMsg += "【フォント更新】\n";
+    confirmMsg += "・標準スタイル: MS明朝 → 小塚明朝 Pr6N\n";
+    confirmMsg += "・MS明朝 Bold → BIZ UDゴシック\n";
     confirmMsg += "・既存ドキュメントの全表: MS明朝 → BIZ UDゴシック\n\n";
     confirmMsg += "【マスターページ】\n";
     confirmMsg += "・" + CONFIG.masterPagePrefix + "-" + CONFIG.masterPageName + "\n\n";
@@ -381,6 +383,9 @@ function main() {
 
             // MS明朝 Bold → BIZ UDゴシック Regular に置換
             result.fontsReplaced = replaceFonts(result.importedStory);
+
+            // 「標準」スタイルのMS明朝 → 小塚明朝 Pr6N に置換
+            result.normalFontsReplaced = replaceNormalStyleFont(result.importedStory);
         }
 
         // 既存ドキュメントのすべての表のフォントを更新
@@ -397,7 +402,8 @@ function main() {
         resultMsg += "段落数: " + result.paragraphsImported + "\n";
         resultMsg += "スタイル変換: " + result.stylesApplied + "件\n";
         resultMsg += "小項目□追加: " + result.kokomokuFixed + "件\n";
-        resultMsg += "フォント置換: " + (result.fontsReplaced || 0) + "件\n";
+        resultMsg += "標準→小塚明朝: " + (result.normalFontsReplaced || 0) + "文字\n";
+        resultMsg += "Bold→BIZ UDゴシック: " + (result.fontsReplaced || 0) + "文字\n";
         resultMsg += "表フォント更新: " + (result.tableFontsUpdated || 0) + "文字\n";
         resultMsg += "処理時間: " + duration.toFixed(1) + "秒";
 
@@ -909,6 +915,85 @@ function replaceFonts(importedStory) {
     }
 
     debugLog("フォント置換完了: " + replaceCount + "件");
+    return replaceCount;
+}
+
+// 「標準」スタイルのMS明朝を小塚明朝 Pr6Nに置換（インポートしたストーリーのみ）
+function replaceNormalStyleFont(importedStory) {
+    var replaceCount = 0;
+
+    if (!importedStory || !importedStory.isValid) {
+        debugLog("有効なストーリーがありません");
+        return 0;
+    }
+
+    debugLog("=== 標準スタイルのフォント置換開始 ===");
+
+    // 置換先フォントを取得（小塚明朝 Pr6N）
+    var targetFont;
+    try {
+        // 小塚明朝 Pr6N R（複数の表記に対応）
+        targetFont = app.fonts.itemByName("Kozuka Mincho Pr6N\tR");
+        if (!targetFont || !targetFont.isValid) {
+            targetFont = app.fonts.itemByName("小塚明朝 Pr6N\tR");
+        }
+        if (!targetFont || !targetFont.isValid) {
+            targetFont = app.fonts.itemByName("KozMinPr6N-Regular");
+        }
+    } catch (e) {
+        debugLog("小塚明朝 Pr6Nが見つかりません: " + e.message);
+        return 0;
+    }
+
+    if (!targetFont || !targetFont.isValid) {
+        debugLog("小塚明朝 Pr6Nが見つかりません");
+        return 0;
+    }
+
+    debugLog("置換先フォント: " + targetFont.name);
+
+    // 段落単位で処理（「標準」または「Normal」スタイルのみ対象）
+    try {
+        var paragraphs = importedStory.paragraphs;
+
+        for (var p = 0; p < paragraphs.length; p++) {
+            var para = paragraphs[p];
+            var styleName = para.appliedParagraphStyle.name;
+
+            // 「標準」または「Normal」スタイルの段落のみ処理
+            if (styleName === "標準" || styleName === "Normal") {
+                var characters = para.characters;
+
+                for (var i = 0; i < characters.length; i++) {
+                    try {
+                        var ch = characters[i];
+                        var fontName = ch.appliedFont.name;
+
+                        // MS明朝（Bold以外）を検出
+                        var isMincho = false;
+                        if (fontName.indexOf("Bold") < 0) {  // Boldは除外
+                            if (fontName.indexOf("MS") >= 0 && fontName.indexOf("明朝") >= 0) {
+                                isMincho = true;
+                            } else if (fontName.indexOf("ＭＳ") >= 0 && fontName.indexOf("明朝") >= 0) {
+                                isMincho = true;
+                            }
+                        }
+
+                        if (isMincho) {
+                            ch.appliedFont = targetFont;
+                            replaceCount++;
+                        }
+                    } catch (e) {
+                        // 個別の文字エラーは無視
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        debugLog("標準スタイルフォント置換エラー: " + e.message);
+    }
+
+    debugLog("標準スタイルフォント置換完了: " + replaceCount + "件 (MS明朝→小塚明朝 Pr6N)");
     return replaceCount;
 }
 
