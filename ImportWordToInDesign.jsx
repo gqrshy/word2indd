@@ -347,7 +347,8 @@ function main() {
     confirmMsg += "・演習タイトル → 演習タイトル\n";
     confirmMsg += "・図表番号 → 図番号\n";
     confirmMsg += "・リスト → リスト\n";
-    confirmMsg += "・番号 → 番号リスト\n\n";
+    confirmMsg += "・番号 → 番号リスト\n";
+    confirmMsg += "・図内テキスト → コード・コマンド\n\n";
     confirmMsg += "【表のフォント更新】\n";
     confirmMsg += "・既存ドキュメントの全表: MS明朝 → BIZ UDゴシック\n\n";
     confirmMsg += "【マスターページ】\n";
@@ -381,6 +382,9 @@ function main() {
 
             // MS明朝 Bold → BIZ UDゴシック Regular に置換
             result.fontsReplaced = replaceFonts(result.importedStory);
+
+            // 図（アンカードオブジェクト）内のテキストに「コード・コマンド」スタイルを適用
+            result.codeStyleApplied = applyCodeStyleToAnchoredObjects(doc, result.importedStory);
         }
 
         // 既存ドキュメントのすべての表のフォントを更新
@@ -397,6 +401,7 @@ function main() {
         resultMsg += "段落数: " + result.paragraphsImported + "\n";
         resultMsg += "スタイル変換: " + result.stylesApplied + "件\n";
         resultMsg += "小項目□追加: " + result.kokomokuFixed + "件\n";
+        resultMsg += "図内コード・コマンド: " + (result.codeStyleApplied || 0) + "段落\n";
         resultMsg += "フォント置換: " + (result.fontsReplaced || 0) + "件\n";
         resultMsg += "表フォント更新: " + (result.tableFontsUpdated || 0) + "文字\n";
         resultMsg += "処理時間: " + duration.toFixed(1) + "秒";
@@ -991,6 +996,155 @@ function updateAllTableFonts(doc) {
 
     debugLog("全表フォント更新完了: " + tableCount + "表, " + replaceCount + "文字");
     return replaceCount;
+}
+
+// アンカードオブジェクト（図）内のテキストに「コード・コマンド」スタイルを適用
+// Wordのテキストボックスはアンカードオブジェクトとしてインポートされる
+function applyCodeStyleToAnchoredObjects(doc, importedStory) {
+    var styleApplied = 0;
+
+    debugLog("=== アンカードオブジェクト内テキストにコード・コマンドスタイル適用開始 ===");
+
+    if (!importedStory || !importedStory.isValid) {
+        debugLog("有効なストーリーがありません");
+        return 0;
+    }
+
+    // 「コード・コマンド」スタイルを取得
+    var codeStyle;
+    try {
+        codeStyle = doc.paragraphStyles.itemByName("コード・コマンド");
+        if (!codeStyle.isValid) {
+            debugLog("「コード・コマンド」スタイルが見つかりません");
+            return 0;
+        }
+    } catch (e) {
+        debugLog("「コード・コマンド」スタイル取得エラー: " + e.message);
+        return 0;
+    }
+
+    debugLog("「コード・コマンド」スタイルを使用します");
+
+    // ストーリー内のすべてのテキストフレームを取得
+    var textContainers = importedStory.textContainers;
+
+    for (var i = 0; i < textContainers.length; i++) {
+        var container = textContainers[i];
+
+        if (container.constructor.name !== "TextFrame") {
+            continue;
+        }
+
+        // このテキストフレーム内のアンカードオブジェクトを検索
+        try {
+            var allPageItems = container.allPageItems;
+
+            for (var j = 0; j < allPageItems.length; j++) {
+                var item = allPageItems[j];
+
+                // アンカードオブジェクト（グループまたはテキストフレーム）を処理
+                styleApplied += processAnchoredItem(item, codeStyle);
+            }
+        } catch (e) {
+            debugLog("アンカードオブジェクト検索エラー: " + e.message);
+        }
+    }
+
+    // ストーリー内のインライングラフィックスも処理
+    try {
+        var paragraphs = importedStory.paragraphs;
+        for (var p = 0; p < paragraphs.length; p++) {
+            try {
+                var para = paragraphs[p];
+                // 段落内のすべてのページアイテム（インライングラフィックス含む）
+                if (para.allPageItems && para.allPageItems.length > 0) {
+                    for (var k = 0; k < para.allPageItems.length; k++) {
+                        styleApplied += processAnchoredItem(para.allPageItems[k], codeStyle);
+                    }
+                }
+            } catch (e) {
+                // 個別エラーは無視
+            }
+        }
+    } catch (e) {
+        debugLog("段落内アイテム処理エラー: " + e.message);
+    }
+
+    debugLog("アンカードオブジェクト内テキストスタイル適用完了: " + styleApplied + "段落");
+    return styleApplied;
+}
+
+// 個別のアンカードアイテムを処理
+function processAnchoredItem(item, codeStyle) {
+    var styleApplied = 0;
+
+    try {
+        // グループの場合は再帰的に処理
+        if (item.constructor.name === "Group") {
+            var groupItems = item.allPageItems;
+            for (var i = 0; i < groupItems.length; i++) {
+                styleApplied += processAnchoredItem(groupItems[i], codeStyle);
+            }
+        }
+        // テキストフレームの場合
+        else if (item.constructor.name === "TextFrame") {
+            // このテキストフレームがアンカードかどうかを確認
+            // または親ストーリーと異なるストーリーを持つ場合（図内のテキスト）
+            var textFrame = item;
+
+            // テキストフレーム内のすべての段落にスタイルを適用
+            try {
+                var paragraphs = textFrame.paragraphs;
+
+                for (var p = 0; p < paragraphs.length; p++) {
+                    try {
+                        var para = paragraphs[p];
+                        // 空の段落はスキップ
+                        var content = para.contents.replace(/[\r\n\s　]/g, "");
+                        if (content.length === 0) {
+                            continue;
+                        }
+
+                        para.appliedParagraphStyle = codeStyle;
+                        styleApplied++;
+
+                        if (styleApplied <= 5) {
+                            debugLog("図内テキストにスタイル適用: " + para.contents.substring(0, 30) + "...");
+                        }
+                    } catch (e) {
+                        // 個別段落エラーは無視
+                    }
+                }
+            } catch (e) {
+                debugLog("テキストフレーム処理エラー: " + e.message);
+            }
+        }
+        // 矩形やその他の形状内にテキストがある場合
+        else if (item.contentType === ContentType.TEXT_TYPE) {
+            try {
+                var paragraphs = item.paragraphs;
+                for (var p = 0; p < paragraphs.length; p++) {
+                    try {
+                        var para = paragraphs[p];
+                        var content = para.contents.replace(/[\r\n\s　]/g, "");
+                        if (content.length === 0) {
+                            continue;
+                        }
+                        para.appliedParagraphStyle = codeStyle;
+                        styleApplied++;
+                    } catch (e) {
+                        // 個別段落エラーは無視
+                    }
+                }
+            } catch (e) {
+                // エラーは無視
+            }
+        }
+    } catch (e) {
+        // アイテム処理エラーは無視
+    }
+
+    return styleApplied;
 }
 
 // 段落数をカウント
