@@ -5,23 +5,10 @@ Word文書(.docx)をInDesignにインポートし、段落スタイルを自動�
 ## 対応環境
 
 - Adobe InDesign 2025
-- Windows（PowerShell前処理機能はWindowsのみ）
 
 ## 機能概要
 
-### 1. PowerShell前処理（Windows限定）
-
-インポート前にWord文書を自動的に前処理します：
-
-| 処理内容 | 説明 |
-|----------|------|
-| SVG→PNG変換 | SVG拡張形式の画像をPNGに変換（InDesignクラッシュ防止） |
-| 変更履歴の確定 | トラックチェンジを承諾して確定 |
-| コメント削除 | すべてのコメントを削除 |
-
-前処理には別途 `PreprocessDocx.ps1` が必要です。
-
-### 2. 段落スタイル変換
+### 1. 段落スタイル変換
 
 Word文書の段落スタイルをInDesignのスタイルに自動マッピングします：
 
@@ -35,18 +22,18 @@ Word文書の段落スタイルをInDesignのスタイルに自動マッピン�
 | リスト | リスト | |
 | 番号 | 番号リスト | |
 
-### 3. フォント置換
+### 2. フォント置換
 
 | 置換前 | 置換後 |
 |--------|--------|
 | MS明朝 Bold | BIZ UDゴシック Regular |
 | 表内のMS明朝（Regular/Bold） | BIZ UDゴシック Regular |
 
-### 4. アンカードオブジェクト処理
+### 3. アンカードオブジェクト処理
 
 Wordのテキストボックス（図として挿入されたもの）内のテキストに「コード・コマンド」スタイルを適用します。
 
-### 5. 自動ページ追加
+### 4. 自動ページ追加
 
 テキストがオーバーフローする場合、見開きページを自動追加してテキストフレームを連結します。
 
@@ -64,8 +51,6 @@ Wordのテキストボックス（図として挿入されたもの）内のテ�
 
 ```javascript
 var CONFIG = {
-    enablePreprocess: true,      // PowerShell前処理を有効化
-    keepCleanedFile: false,      // 前処理後のファイルを保持
     autoCreatePages: true,       // 自動ページ追加
     maxSpreads: 100,             // 最大追加見開き数
     masterPagePrefix: "H",       // マスターページ接頭辞
@@ -73,11 +58,6 @@ var CONFIG = {
     debugMode: true              // デバッグログ出力
 };
 ```
-
-## 必要なファイル
-
-- `ImportWordToInDesign.jsx` - メインスクリプト
-- `PreprocessDocx.ps1` - 前処理用PowerShellスクリプト（同じフォルダに配置）
 
 ## 処理結果
 
@@ -104,12 +84,3 @@ var CONFIG = {
 ### 「マスターページが見つかりません」エラー
 
 `H-本文マスター` という名前のマスターページを作成してください。
-
-### 前処理に失敗する
-
-- PowerShellの実行ポリシーを確認してください
-- `PreprocessDocx.ps1` がスクリプトと同じフォルダにあることを確認してください
-
-### InDesignがクラッシュする
-
-Word文書にSVG拡張形式の画像が含まれている可能性があります。前処理機能を有効にしてください。

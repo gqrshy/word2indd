@@ -9,8 +9,6 @@
 // ============================================================
 
 var CONFIG = {
-    enablePreprocess: true,
-    keepCleanedFile: false,
     autoCreatePages: true,
     maxSpreads: 100,
     masterPagePrefix: "H",
@@ -41,125 +39,6 @@ var CONFIG = {
 function debugLog(message) {
     if (CONFIG.debugMode) {
         $.writeln("[DEBUG] " + message);
-    }
-}
-
-// ============================================================
-// PowerShell前処理
-// ============================================================
-
-function getPreprocessScriptPath() {
-    try {
-        var scriptFile = new File($.fileName);
-        var scriptFolder = scriptFile.parent;
-        var psScript = new File(scriptFolder + "/PreprocessDocx.ps1");
-
-        if (psScript.exists) {
-            return psScript.fsName;
-        } else {
-            debugLog("PowerShellスクリプトが見つかりません: " + psScript.fsName);
-            return null;
-        }
-    } catch (e) {
-        debugLog("スクリプトパス取得エラー: " + e.message);
-        return null;
-    }
-}
-
-function preprocessWordDocument(inputPath) {
-    if (!CONFIG.enablePreprocess) {
-        debugLog("前処理はスキップ");
-        return inputPath;
-    }
-
-    if ($.os.indexOf("Windows") === -1) {
-        debugLog("PowerShell前処理はWindowsのみ対応");
-        return inputPath;
-    }
-
-    var psScriptPath = getPreprocessScriptPath();
-    if (!psScriptPath) {
-        var continueWithout = confirm(
-            "前処理スクリプト（PreprocessDocx.ps1）が見つかりません。\n\n" +
-            "前処理なしでインポートを続行しますか？\n" +
-            "（SVGや変更履歴を含むファイルはクラッシュする可能性があります）"
-        );
-        return continueWithout ? inputPath : null;
-    }
-
-    debugLog("PowerShellスクリプト: " + psScriptPath);
-
-    var inputFile = new File(inputPath);
-    var tempFolder = Folder.temp;
-    var timestamp = new Date().getTime();
-    var outputFileName = inputFile.name.replace(/\.docx$/i, "_cleaned_" + timestamp + ".docx");
-    var outputPath = tempFolder.fsName + "\\" + outputFileName;
-
-    debugLog("前処理入力: " + inputPath);
-    debugLog("前処理出力: " + outputPath);
-
-    var vbsCode = 'Set objShell = CreateObject("WScript.Shell")\r\n';
-    vbsCode += 'intReturn = objShell.Run("powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File ""' +
-               psScriptPath.replace(/\\/g, '\\\\') + '"" -InputFile ""' +
-               inputPath.replace(/\\/g, '\\\\') + '"" -OutputFile ""' +
-               outputPath.replace(/\\/g, '\\\\') + '""", 0, True)\r\n';
-    vbsCode += 'WScript.Quit(intReturn)';
-
-    try {
-        debugLog("PowerShell前処理を実行中...");
-
-        var vbsFile = new File(tempFolder + "/preprocess_docx_" + timestamp + ".vbs");
-        vbsFile.encoding = "UTF-8";
-        vbsFile.open("w");
-        vbsFile.write(vbsCode);
-        vbsFile.close();
-
-        vbsFile.execute();
-
-        var outputFile = new File(outputPath);
-        var waitCount = 0;
-        var maxWait = 120;
-
-        while (!outputFile.exists && waitCount < maxWait) {
-            $.sleep(500);
-            waitCount++;
-        }
-
-        try { vbsFile.remove(); } catch (e) {}
-
-        if (outputFile.exists) {
-            debugLog("前処理完了: " + outputPath);
-            return outputPath;
-        } else {
-            debugLog("前処理失敗: 出力ファイルが生成されませんでした");
-            var continueWithout = confirm(
-                "前処理に失敗しました。\n\n" +
-                "前処理なしでインポートを続行しますか？"
-            );
-            return continueWithout ? inputPath : null;
-        }
-
-    } catch (e) {
-        debugLog("前処理実行エラー: " + e.message);
-        var continueWithout = confirm(
-            "前処理中にエラーが発生しました:\n" + e.message + "\n\n" +
-            "前処理なしでインポートを続行しますか？"
-        );
-        return continueWithout ? inputPath : null;
-    }
-}
-
-function cleanupPreprocessedFile(filePath, originalPath) {
-    if (!CONFIG.keepCleanedFile && filePath !== originalPath) {
-        try {
-            var file = new File(filePath);
-            if (file.exists) {
-                file.remove();
-                debugLog("一時ファイルを削除: " + filePath);
-            }
-        } catch (e) {
-            debugLog("一時ファイル削除エラー: " + e.message);
-        }
     }
 }
 
@@ -886,31 +765,7 @@ function main() {
         return;
     }
 
-    var originalWordPath = wordFile.fsName;
-    var processedWordPath = originalWordPath;
-
-    if (CONFIG.enablePreprocess) {
-        debugLog("=== 前処理開始 ===");
-        processedWordPath = preprocessWordDocument(originalWordPath);
-
-        if (!processedWordPath) {
-            return;
-        }
-
-        if (processedWordPath !== originalWordPath) {
-            debugLog("前処理済みファイルを使用: " + processedWordPath);
-        }
-    }
-
-    wordFile = new File(processedWordPath);
-
     var confirmMsg = "Word文書をインポートします\n\n";
-
-    if (processedWordPath !== originalWordPath) {
-        confirmMsg += "【前処理済み】\n";
-        confirmMsg += "・SVG→PNG変換、変更履歴確定、コメント削除 完了\n\n";
-    }
-
     confirmMsg += "【段落スタイル変換】\n";
     confirmMsg += "・大項目 → 大見出し1 (■削除)\n";
     confirmMsg += "・小項目 → 小項目 (□記号保持)\n";
@@ -927,7 +782,6 @@ function main() {
     confirmMsg += "実行しますか?";
 
     if (!confirm(confirmMsg)) {
-        cleanupPreprocessedFile(processedWordPath, originalWordPath);
         return;
     }
 
@@ -974,11 +828,8 @@ function main() {
 
         alert(resultMsg);
 
-        cleanupPreprocessedFile(processedWordPath, originalWordPath);
-
     } catch (e) {
         app.scriptPreferences.enableRedraw = true;
-        cleanupPreprocessedFile(processedWordPath, originalWordPath);
         alert("エラー:\n\n" + e.message + "\n\n行: " + e.line);
     }
 }
